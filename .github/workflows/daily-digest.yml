@@ -41,6 +41,11 @@ jobs:
         run: |
           uv sync
 
+      - name: Run backend tests
+        working-directory: ./backend
+        run: |
+          uv run python -m unittest discover -s tests -v
+
       - name: Create config.yaml from GitHub variable
         working-directory: ./backend
         env:
