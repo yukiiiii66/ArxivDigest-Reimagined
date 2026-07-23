@@ -1,6 +1,9 @@
 """Fetcher for arXiv paper metadata."""
 
+import urllib.parse
 import urllib.request
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
 from loguru import logger
@@ -128,12 +131,104 @@ def _fetch_from_single_field(
 
     logger.info(f"Fetched {len(papers)} papers from arXiv field '{field}'")
     return papers
+def _fetch_from_date(
+    target_date: str,
+    categories: list[str] | None = None,
+    max_results: int = 0,
+    timezone_name: str = "UTC",
+) -> list[dict]:
+    """Fetch arXiv papers submitted on one calendar day."""
 
+    try:
+        local_tz = ZoneInfo(timezone_name)
+        start_local = datetime.strptime(target_date, "%Y-%m-%d").replace(
+            tzinfo=local_tz
+        )
+    except ValueError as exc:
+        logger.error(
+            f"Invalid date or timezone: date={target_date}, timezone={timezone_name}"
+        )
+        raise exc
+
+    end_local = start_local + timedelta(days=1) - timedelta(minutes=1)
+    start_utc = start_local.astimezone(ZoneInfo("UTC"))
+    end_utc = end_local.astimezone(ZoneInfo("UTC"))
+
+    date_query = (
+        f"submittedDate:[{start_utc.strftime('%Y%m%d%H%M')} "
+        f"TO {end_utc.strftime('%Y%m%d%H%M')}]"
+    )
+
+    query_params = {
+        "search_query": date_query,
+        "start": 0,
+        "max_results": max_results if max_results > 0 else 2000,
+        "sortBy": "submittedDate",
+        "sortOrder": "ascending",
+    }
+    url = "https://export.arxiv.org/api/query?" + urllib.parse.urlencode(
+        query_params
+    )
+    logger.info(f"Fetching historical arXiv papers: {url}")
+
+    try:
+        with urllib.request.urlopen(url) as page:
+            soup = BeautifulSoup(page.read(), features="xml")
+    except Exception as exc:
+        logger.error(f"Failed to fetch historical arXiv papers: {exc}")
+        return []
+
+    papers = []
+
+    for entry in soup.find_all("entry"):
+        paper_categories = [
+            category.get("term", "")
+            for category in entry.find_all("category")
+            if category.get("term")
+        ]
+
+        if categories:
+            category_match = any(
+                filter_category.lower() in paper_category.lower()
+                for filter_category in categories
+                for paper_category in paper_categories
+            )
+            if not category_match:
+                continue
+
+        paper_id = entry.id.text.strip().rsplit("/", 1)[-1]
+        title = " ".join(entry.title.stripped_strings)
+        abstract = " ".join(entry.summary.stripped_strings)
+        authors = [
+            author.name.text.strip()
+            for author in entry.find_all("author")
+            if author.find("name")
+        ]
+
+        papers.append(
+            {
+                "id": paper_id,
+                "title": title,
+                "authors": authors,
+                "categories": paper_categories,
+                "abstract": abstract,
+                "abs_url": f"https://arxiv.org/abs/{paper_id}",
+                "pdf_url": f"https://arxiv.org/pdf/{paper_id}.pdf",
+            }
+        )
+
+    logger.info(
+        f"Fetched {len(papers)} historical papers for {target_date} "
+        f"({timezone_name})"
+    )
+    return papers
 
 def fetch_arxiv_papers(
     categories: list[str] | None = None,
     field: str | list[str] = "cs",
     max_results: int = 0,
+    target_date: str | None = None,
+    timezone_name: str = "UTC",
 ) -> list[dict]:
     """
     Fetch new papers from arXiv.
@@ -146,6 +241,13 @@ def fetch_arxiv_papers(
     Returns:
         List of paper dicts with keys: id, title, authors, categories, abstract, url
     """
+    if target_date:
+        return _fetch_from_date(
+            target_date=target_date,
+            categories=categories,
+            max_results=max_results,
+            timezone_name=timezone_name,
+        )
     # Normalize field to list
     fields = [field] if isinstance(field, str) else field
 
