@@ -2,7 +2,7 @@
 
 import urllib.parse
 import urllib.request
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
 from bs4 import BeautifulSoup
@@ -132,7 +132,7 @@ def _fetch_from_single_field(
     logger.info(f"Fetched {len(papers)} papers from arXiv field '{field}'")
     return papers
 def _fetch_from_date(
-    target_date: str,
+    target_date: str | date | datetime,
     categories: list[str] | None = None,
     max_results: int = 0,
     timezone_name: str = "UTC",
@@ -141,14 +141,20 @@ def _fetch_from_date(
 
     try:
         local_tz = ZoneInfo(timezone_name)
-        start_local = datetime.strptime(target_date, "%Y-%m-%d").replace(
-            tzinfo=local_tz
+        if isinstance(target_date, datetime):
+            target_day = target_date.date()
+        elif isinstance(target_date, date):
+            target_day = target_date
+        else:
+            target_day = datetime.strptime(str(target_date), "%Y-%m-%d").date()
+        start_local = datetime.combine(
+            target_day, datetime.min.time(), tzinfo=local_tz
         )
-    except ValueError as exc:
+    except (TypeError, ValueError) as exc:
         logger.error(
             f"Invalid date or timezone: date={target_date}, timezone={timezone_name}"
         )
-        raise exc
+        raise
 
     end_local = start_local + timedelta(days=1) - timedelta(minutes=1)
     start_utc = start_local.astimezone(ZoneInfo("UTC"))
