@@ -131,6 +131,8 @@ def _fetch_from_single_field(
 
     logger.info(f"Fetched {len(papers)} papers from arXiv field '{field}'")
     return papers
+
+
 def _fetch_from_date(
     target_date: str | date | datetime,
     categories: list[str] | None = None,
@@ -202,14 +204,22 @@ def _fetch_from_date(
             if not category_match:
                 continue
 
-        paper_id = entry.id.text.strip().rsplit("/", 1)[-1]
-        title = " ".join(entry.title.stripped_strings)
-        abstract = " ".join(entry.summary.stripped_strings)
-        authors = [
-            author.name.text.strip()
-            for author in entry.find_all("author")
-            if author.find("name")
-        ]
+        id_tag = entry.find("id")
+        title_tag = entry.find("title")
+        summary_tag = entry.find("summary")
+        if id_tag is None or title_tag is None or summary_tag is None:
+            logger.warning("Skipping malformed arXiv API entry with missing fields")
+            continue
+
+        paper_id = id_tag.get_text(strip=True).rsplit("/", 1)[-1]
+        title = " ".join(title_tag.stripped_strings)
+        abstract = " ".join(summary_tag.stripped_strings)
+
+        authors = []
+        for author_tag in entry.find_all("author"):
+            name_tag = author_tag.find("name")
+            if name_tag is not None:
+                authors.append(name_tag.get_text(" ", strip=True))
 
         papers.append(
             {
@@ -233,7 +243,7 @@ def fetch_arxiv_papers(
     categories: list[str] | None = None,
     field: str | list[str] = "cs",
     max_results: int = 0,
-    target_date: str | None = None,
+    target_date: str | date | datetime | None = None,
     timezone_name: str = "UTC",
 ) -> list[dict]:
     """
