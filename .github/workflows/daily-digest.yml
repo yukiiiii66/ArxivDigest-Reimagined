@@ -43,8 +43,10 @@ jobs:
 
       - name: Create config.yaml from GitHub variable
         working-directory: ./backend
+        env:
+          CONFIG_YAML: ${{ vars.CONFIG_YAML }}
         run: |
-          echo "${{ vars.CONFIG_YAML }}" > config.yaml
+          printf '%s\n' "$CONFIG_YAML" > config.yaml
 
       - name: Generate digest
         working-directory: ./backend
