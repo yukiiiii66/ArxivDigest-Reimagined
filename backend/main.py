@@ -114,10 +114,12 @@ async def async_main(config: dict) -> None:
     # Fetch papers from arXiv
     logger.info("Fetching papers from arXiv...")
     papers = fetch_arxiv_papers(
-        categories=arxiv_config.get("categories", []),
-        field=arxiv_config.get("field", "cs"),
-        max_results=arxiv_config.get("max_results", 0),
-    )
+    categories=arxiv_config.get("categories", []),
+    field=arxiv_config.get("field", "cs"),
+    max_results=arxiv_config.get("max_results", 0),
+    target_date=arxiv_config.get("date"),
+    timezone_name=arxiv_config.get("timezone", "UTC"),
+)
 
     if not papers:
         logger.error("No papers fetched from arXiv")
